@@ -2,10 +2,13 @@ package game
 
 // Constants for game configuration
 const (
-	GridWidth  = 19
-	GridHeight = 13
-	MinWalls   = 5
-	MaxWalls   = 8
+	GridWidth      = 19
+	GridHeight     = 13
+	MinWalls       = 5
+	MaxWalls       = 8
+	MicePerPlayer  = 12
+	Player1Columns = 9 // Left-most columns for Player 1
+	Player2Columns = 9 // Right-most columns for Player 2
 )
 
 // CellType represents what's in a grid cell
@@ -15,6 +18,38 @@ const (
 	Empty CellType = iota
 	Wall
 )
+
+// PlayerColor represents the player colors
+type PlayerColor int
+
+const (
+	Red PlayerColor = iota
+	Blue
+)
+
+// String returns the string representation of a player color
+func (p PlayerColor) String() string {
+	switch p {
+	case Red:
+		return "Red"
+	case Blue:
+		return "Blue"
+	default:
+		return "Unknown"
+	}
+}
+
+// Position represents a coordinate in the grid
+type Position struct {
+	Row int
+	Col int
+}
+
+// Mouse represents a mouse with its position and owner
+type Mouse struct {
+	Position Position
+	Player   PlayerColor
+}
 
 // Action represents player actions
 type Action int
@@ -33,6 +68,14 @@ type GameState struct {
 	Grid           [GridHeight][GridWidth]CellType
 	SelectedColumn int
 	GameOver       bool
+	CurrentPlayer  PlayerColor
+	Mice           []Mouse
+}
+
+// Player represents a player in the game
+type Player struct {
+	Color PlayerColor
+	Mice  []Mouse
 }
 
 // Game interface defines the core game operations
@@ -41,6 +84,8 @@ type Game interface {
 	ProcessAction(action Action)
 	IsGameOver() bool
 	Reset()
+	GetPlayer(color PlayerColor) Player
+	GetMiceAt(pos Position) []Mouse
 }
 
 // Renderer interface for displaying the game
