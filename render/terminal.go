@@ -6,11 +6,13 @@ import (
 )
 
 // TerminalRenderer implements the Renderer interface for terminal output
-type TerminalRenderer struct{}
+type TerminalRenderer struct {
+	game game.Game // Reference to game for querying state
+}
 
 // NewTerminalRenderer creates a new terminal renderer
-func NewTerminalRenderer() *TerminalRenderer {
-	return &TerminalRenderer{}
+func NewTerminalRenderer(g game.Game) *TerminalRenderer {
+	return &TerminalRenderer{game: g}
 }
 
 // Clear clears the terminal screen
@@ -22,16 +24,28 @@ func (r *TerminalRenderer) Clear() {
 func (r *TerminalRenderer) Render(state game.GameState) {
 	r.Clear()
 
-	// Show current player
-	fmt.Printf("Current Player: %s\n", state.CurrentPlayer.String())
+	// Show current player with emphasis
+	playerIcon := "🔺"
+	if state.CurrentPlayer == game.Blue {
+		playerIcon = "🔹"
+	}
+	fmt.Printf("%s %s Player's Turn %s\n", playerIcon, state.CurrentPlayer.String(), playerIcon)
 
-	// Print column indicators
+	// Print column indicators with validity markers
 	fmt.Print("  ")
 	for col := 0; col < game.GridWidth; col++ {
 		if col == state.SelectedColumn {
-			fmt.Print("🔽")
+			if r.game.CanPlayerMoveColumn(state.CurrentPlayer, col) {
+				fmt.Print("🔽") // Valid selected column
+			} else {
+				fmt.Print("❌") // Invalid selected column
+			}
 		} else {
-			fmt.Print("  ")
+			if r.game.CanPlayerMoveColumn(state.CurrentPlayer, col) {
+				fmt.Print("✓ ") // Valid column
+			} else {
+				fmt.Print("  ") // Invalid/empty column
+			}
 		}
 	}
 	fmt.Println()
@@ -47,6 +61,7 @@ func (r *TerminalRenderer) Render(state game.GameState) {
 	}
 
 	r.showPlayerStats(state)
+	r.showTurnInfo(state)
 	r.showControls()
 }
 
@@ -56,6 +71,7 @@ func (r *TerminalRenderer) getCellDisplay(state game.GameState, pos game.Positio
 	mice := r.getMiceAt(state.Mice, pos)
 
 	isSelected := pos.Col == state.SelectedColumn
+	isValidColumn := r.game.CanPlayerMoveColumn(state.CurrentPlayer, pos.Col)
 
 	if len(mice) > 0 {
 		// Show mice - if multiple mice, show the top one
@@ -72,13 +88,21 @@ func (r *TerminalRenderer) getCellDisplay(state game.GameState, pos game.Positio
 		} else if redCount > 0 {
 			// Red mice
 			if isSelected {
-				return "🔴" // Highlighted red
+				if isValidColumn {
+					return "🔴" // Highlighted red (valid)
+				} else {
+					return "🟤" // Highlighted red (invalid)
+				}
 			}
 			return "🔺" // Red mouse
 		} else {
 			// Blue mice
 			if isSelected {
-				return "🔵" // Highlighted blue
+				if isValidColumn {
+					return "🔵" // Highlighted blue (valid)
+				} else {
+					return "🟦" // Highlighted blue (invalid)
+				}
 			}
 			return "🔹" // Blue mouse
 		}
@@ -88,12 +112,20 @@ func (r *TerminalRenderer) getCellDisplay(state game.GameState, pos game.Positio
 	switch state.Grid[pos.Row][pos.Col] {
 	case game.Wall:
 		if isSelected {
-			return "🟨" // Highlighted wall
+			if isValidColumn {
+				return "🟨" // Highlighted wall (valid column)
+			} else {
+				return "🟫" // Highlighted wall (invalid column)
+			}
 		}
 		return "🟫" // Normal wall
 	case game.Empty:
 		if isSelected {
-			return "🔳" // Highlighted empty space
+			if isValidColumn {
+				return "🔳" // Highlighted empty space (valid column)
+			} else {
+				return "⬜" // Highlighted empty space (invalid column)
+			}
 		}
 		return "⬛" // Normal empty space
 	default:
@@ -129,8 +161,27 @@ func (r *TerminalRenderer) showPlayerStats(state game.GameState) {
 	bluePlayer := r.getPlayerInfo(state.Mice, game.Blue)
 
 	fmt.Printf("\nPlayer Stats:\n")
-	fmt.Printf("🔺 Red:  %d mice\n", len(redPlayer))
-	fmt.Printf("🔹 Blue: %d mice\n", len(bluePlayer))
+	fmt.Printf("🔺 Red:  %d mice | Valid columns: %s\n",
+		len(redPlayer), r.getValidColumnsDisplay(game.Red))
+	fmt.Printf("🔹 Blue: %d mice | Valid columns: %s\n",
+		len(bluePlayer), r.getValidColumnsDisplay(game.Blue))
+}
+
+// getValidColumnsDisplay returns a display string for valid columns
+func (r *TerminalRenderer) getValidColumnsDisplay(player game.PlayerColor) string {
+	validCols := r.game.GetValidColumnsForPlayer(player)
+	if len(validCols) == 0 {
+		return "None"
+	}
+
+	result := ""
+	for i, col := range validCols {
+		if i > 0 {
+			result += ", "
+		}
+		result += fmt.Sprintf("%d", col+1) // 1-based for display
+	}
+	return result
 }
 
 // getPlayerInfo returns mice for a specific player
@@ -144,6 +195,21 @@ func (r *TerminalRenderer) getPlayerInfo(mice []game.Mouse, color game.PlayerCol
 	return result
 }
 
+// showTurnInfo displays turn-specific information
+func (r *TerminalRenderer) showTurnInfo(state game.GameState) {
+	fmt.Printf("\nTurn Info:\n")
+
+	// Check if current selection is valid
+	isValidSelection := r.game.CanPlayerMoveColumn(state.CurrentPlayer, state.SelectedColumn)
+	if isValidSelection {
+		fmt.Printf("✅ Column %d is ready to move!\n", state.SelectedColumn+1)
+		fmt.Println("   Use ↑/↓ (or W/S or K/J) to move this column")
+	} else {
+		fmt.Printf("❌ Column %d has no %s mice\n", state.SelectedColumn+1, state.CurrentPlayer.String())
+		fmt.Println("   Use ←/→ (or A/D or H/L) to find a valid column")
+	}
+}
+
 // ShowMessage displays a message to the user
 func (r *TerminalRenderer) ShowMessage(msg string) {
 	fmt.Println(msg)
@@ -152,12 +218,12 @@ func (r *TerminalRenderer) ShowMessage(msg string) {
 // showControls displays the control instructions
 func (r *TerminalRenderer) showControls() {
 	fmt.Println("\nControls:")
-	fmt.Println("← → (or A/D or H/L) : Select column")
-	fmt.Println("↑ ↓ (or W/S or K/J)  : Move column up/down")
+	fmt.Println("← → (or A/D or H/L) : Select column with your mice")
+	fmt.Println("↑ ↓ (or W/S or K/J)  : Move your column up/down")
 	fmt.Println("q                    : Quit")
 	fmt.Println("\nLegend:")
 	fmt.Println("🔺 Red mice    🔹 Blue mice    🟠 Mixed")
-	fmt.Println("🟫 Wall        ⬛ Empty space")
+	fmt.Println("🟫 Wall        ⬛ Empty        ✓ Valid column")
 }
 
 // HideCursor hides the terminal cursor

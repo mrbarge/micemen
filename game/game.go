@@ -27,6 +27,7 @@ func (g *MicemenGame) Reset() {
 	}
 	g.generateWalls()
 	g.placeMice()
+	g.moveToValidColumn() // Start on a valid column for current player
 }
 
 // GetState returns a copy of the current game state
@@ -72,16 +73,161 @@ func (g *MicemenGame) ProcessAction(action Action) {
 
 	switch action {
 	case ActionMoveLeft:
-		g.moveSelection(-1)
+		g.moveSelectionToValidColumn(-1)
 	case ActionMoveRight:
-		g.moveSelection(1)
+		g.moveSelectionToValidColumn(1)
 	case ActionMoveColumnUp:
-		g.moveColumnUp()
+		if g.canPlayerMoveColumn(g.state.CurrentPlayer, g.state.SelectedColumn) {
+			g.moveColumnUp()
+			g.switchPlayer()
+		}
 	case ActionMoveColumnDown:
-		g.moveColumnDown()
+		if g.canPlayerMoveColumn(g.state.CurrentPlayer, g.state.SelectedColumn) {
+			g.moveColumnDown()
+			g.switchPlayer()
+		}
 	case ActionQuit:
 		g.state.GameOver = true
 	}
+}
+
+// CanPlayerMoveColumn checks if the specified player can move the specified column (public method)
+func (g *MicemenGame) CanPlayerMoveColumn(player PlayerColor, col int) bool {
+	return g.canPlayerMoveColumn(player, col)
+}
+
+// GetValidColumnsForPlayer returns all columns where the player has mice (public method)
+func (g *MicemenGame) GetValidColumnsForPlayer(player PlayerColor) []int {
+	return g.getValidColumnsForPlayer(player)
+}
+
+// canPlayerMoveColumn checks if the current player can move the specified column
+func (g *MicemenGame) canPlayerMoveColumn(player PlayerColor, col int) bool {
+	if col < 0 || col >= GridWidth {
+		return false
+	}
+
+	// Check if the player has any mice in this column
+	for _, mouse := range g.state.Mice {
+		if mouse.Position.Col == col && mouse.Player == player {
+			return true
+		}
+	}
+
+	return false
+}
+
+// getValidColumnsForPlayer returns all columns where the player has mice
+func (g *MicemenGame) getValidColumnsForPlayer(player PlayerColor) []int {
+	columnSet := make(map[int]bool)
+
+	for _, mouse := range g.state.Mice {
+		if mouse.Player == player {
+			columnSet[mouse.Position.Col] = true
+		}
+	}
+
+	var columns []int
+	for col := range columnSet {
+		columns = append(columns, col)
+	}
+
+	// Sort columns for consistent ordering
+	for i := 0; i < len(columns)-1; i++ {
+		for j := i + 1; j < len(columns); j++ {
+			if columns[i] > columns[j] {
+				columns[i], columns[j] = columns[j], columns[i]
+			}
+		}
+	}
+
+	return columns
+}
+
+// moveSelectionToValidColumn moves selection to the next valid column in the given direction
+func (g *MicemenGame) moveSelectionToValidColumn(direction int) {
+	validColumns := g.getValidColumnsForPlayer(g.state.CurrentPlayer)
+	if len(validColumns) == 0 {
+		return // No valid columns
+	}
+
+	currentCol := g.state.SelectedColumn
+	var nextCol int
+
+	if direction > 0 {
+		// Moving right - find next valid column to the right
+		nextCol = -1
+		for _, col := range validColumns {
+			if col > currentCol {
+				nextCol = col
+				break
+			}
+		}
+		// If no column to the right, wrap to leftmost
+		if nextCol == -1 {
+			nextCol = validColumns[0]
+		}
+	} else {
+		// Moving left - find next valid column to the left
+		nextCol = -1
+		for i := len(validColumns) - 1; i >= 0; i-- {
+			col := validColumns[i]
+			if col < currentCol {
+				nextCol = col
+				break
+			}
+		}
+		// If no column to the left, wrap to rightmost
+		if nextCol == -1 {
+			nextCol = validColumns[len(validColumns)-1]
+		}
+	}
+
+	g.state.SelectedColumn = nextCol
+}
+
+// moveToValidColumn moves selection to the nearest valid column for current player
+func (g *MicemenGame) moveToValidColumn() {
+	validColumns := g.getValidColumnsForPlayer(g.state.CurrentPlayer)
+	if len(validColumns) == 0 {
+		return // No valid columns
+	}
+
+	currentCol := g.state.SelectedColumn
+
+	// Find the closest valid column
+	closestCol := validColumns[0]
+	minDistance := abs(currentCol - closestCol)
+
+	for _, col := range validColumns {
+		distance := abs(currentCol - col)
+		if distance < minDistance {
+			minDistance = distance
+			closestCol = col
+		}
+	}
+
+	g.state.SelectedColumn = closestCol
+}
+
+// abs returns the absolute value of an integer
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// switchPlayer changes the current player and moves to a valid column
+func (g *MicemenGame) switchPlayer() {
+	if g.state.CurrentPlayer == Red {
+		g.state.CurrentPlayer = Blue
+	} else {
+		g.state.CurrentPlayer = Red
+	}
+
+	// Move to a valid column for the new player
+	g.moveToValidColumn()
 }
 
 // generateWalls randomly places walls in each column
@@ -267,13 +413,5 @@ func (g *MicemenGame) updateMiceForColumnShift(col int, shiftUp bool) {
 				}
 			}
 		}
-	}
-}
-
-// moveSelection moves the column selection left or right
-func (g *MicemenGame) moveSelection(direction int) {
-	newCol := g.state.SelectedColumn + direction
-	if newCol >= 0 && newCol < GridWidth {
-		g.state.SelectedColumn = newCol
 	}
 }

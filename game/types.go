@@ -86,6 +86,8 @@ type Game interface {
 	Reset()
 	GetPlayer(color PlayerColor) Player
 	GetMiceAt(pos Position) []Mouse
+	CanPlayerMoveColumn(player PlayerColor, col int) bool
+	GetValidColumnsForPlayer(player PlayerColor) []int
 }
 
 // Renderer interface for displaying the game

@@ -18,9 +18,10 @@ type GameEngine struct {
 
 // NewGameEngine creates a new game engine with all components
 func NewGameEngine() *GameEngine {
+	gameInstance := game.NewGame()
 	return &GameEngine{
-		game:   game.NewGame(),
-		render: render.NewTerminalRenderer(),
+		game:   gameInstance,
+		render: render.NewTerminalRenderer(gameInstance), // Pass game to renderer
 		input:  input.NewKeyboardHandler(),
 	}
 }
